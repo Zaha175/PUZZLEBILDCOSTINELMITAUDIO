@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>3D Entspannungs-Puzzle - Westworld Style</title>
+  <style>
+    /* Grundlegende Resets */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Hintergrund und Fullscreen-Canvas */
+    body {
+      background-color: #000;
+      font-family: 'Consolas', monospace;
+      /* overflow: hidden; <- Falls du scrollen erlauben möchtest, auskommentieren oder entfernen */
+      color: #00ffff;
+    }
+    canvas {
+      display: block;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    /* Vollbild-Anzeige beim Klick */
+    #fullscreenImage {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      visibility: hidden;
+      z-index: 20;
+    }
+    #fullscreenImage img {
+      max-width: 90%;
+      max-height: 90%;
+      border: 2px solid #00ffff;
+    }
+
+    /* Audio-Element fixieren und sichtbar halten */
+    #bgAudio {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 999; /* Höher als das Canvas */
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Vollbild-Overlay -->
+  <div id="fullscreenImage" onclick="this.style.visibility='hidden'">
+    <img id="fullscreenImg" src="" alt="Fullscreen Image"/>
+  </div>
+
+  <!-- Audio-Element -->
+  <audio id="bgAudio" controls>
+    <!-- Pfad anpassen, falls die Datei in einem Unterordner liegt -->
+    <source src="COSTINELCAUZE.mp3" type="audio/mpeg" />
+    Dein Browser unterstützt dieses Audio-Format nicht.
+  </audio>
+
+  <!-- Three.js und OrbitControls -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.140.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.140.0/examples/js/controls/OrbitControls.js"></script>
+
+  <script>
+    // Szene & Kamera
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    camera.position.z = 2.3; // Näher an das Objekt
+
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Controls
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // Beleuchtung
+    const ambientLight = new THREE.AmbientLight(0x4a90e2, 0.7);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0x4a90e2, 0.8);
+    directionalLight.position.set(10, 10, 10);
+    scene.add(directionalLight);
+
+    // Textur-Loader
+    const textureLoader = new THREE.TextureLoader();
+
+    // Hintergrund als Plane
+    const bgTexture = textureLoader.load(
+      'https://cdn.gamma.app/fhpleqvbjim2f32/b3044f0e657a490185581341982a9508/original/image-1.jpg'
+    );
+    const bgGeometry = new THREE.PlaneGeometry(
+      window.innerWidth / 12,
+      window.innerHeight / 12
+    );
+    const bgMaterial = new THREE.MeshBasicMaterial({
+      map: bgTexture,
+      side: THREE.DoubleSide
+    });
+    const backgroundMesh = new THREE.Mesh(bgGeometry, bgMaterial);
+    backgroundMesh.position.set(0, 0, -25);
+    scene.add(backgroundMesh);
+
+    // Partikel-System
+    const particlesGeometry = new THREE.BufferGeometry();
+    const particlesCnt = 5000; // Anzahl Partikel
+
+    const posArray = new Float32Array(particlesCnt * 3); // xyz, xyz, xyz, ...
+
+    for (let i = 0; i < particlesCnt * 3; i++) {
+      posArray[i] = (Math.random() - 0.5) * 50; // Zufällige Position
+    }
+
+    particlesGeometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(posArray, 3)
+    );
+
+    const particleMaterial = new THREE.PointsMaterial({
+      size: 0.005,
+      map: textureLoader.load(
+        'https://raw.githubusercontent.com/Kuntal-Das/textures/main/spikey.png'
+      ),
+      transparent: true,
+      blending: THREE.AdditiveBlending
+    });
+
+    const particlesMesh = new THREE.Points(particlesGeometry, particleMaterial);
+    scene.add(particlesMesh);
+    particlesMesh.position.z = -2;
+
+    // Bild-URL (nur noch ein Bild)
+    const imageUrl =
+      'https://cdn.gamma.app/fhpleqvbjim2f32/f6c5dae8f71949b59faee48829dbc68a/original/Screenshot-2025-02-09-211547.jpg';
+
+    // GRÖSSERER Würfel, zentriert
+    const geometry = new THREE.BoxGeometry(3, 1.5, 0.8);
+    const texture = textureLoader.load(imageUrl);
+    const material = new THREE.MeshBasicMaterial({ map: texture });
+    const piece = new THREE.Mesh(geometry, material);
+
+    piece.position.set(0, 0, 0); // Zentriert
+    piece.userData.imageSrc = imageUrl;
+    scene.add(piece);
+
+    // Raycaster für Klick
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    function onMouseClick(event) {
+      // Nur reagieren, wenn direkt auf den Renderer geklickt wurde
+      if (event.target !== renderer.domElement) return;
+
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObject(piece); // Nur noch ein Objekt
+      if (intersects.length > 0) {
+        document.getElementById('fullscreenImg').src =
+          intersects[0].object.userData.imageSrc;
+        document.getElementById('fullscreenImage').style.visibility = 'visible';
+
+        // Kleine Dreh-Animation
+        intersects[0].object.rotation.y += Math.PI / 8;
+        let rotationStep = Math.PI / 64;
+        let steps = 8;
+        let counter = 0;
+        let interval = setInterval(() => {
+          intersects[0].object.rotation.y -= rotationStep;
+          counter++;
+          if (counter >= steps) clearInterval(interval);
+        }, 25);
+      }
+    }
+    window.addEventListener('click', onMouseClick);
+
+    // Animationsschleife
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+
+      // Langsame Rotation des Würfels
+      piece.rotation.y += 0.0015;
+      particlesMesh.rotation.y += 0.0005;
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Resize-Event
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+
+      // Hintergrund-Mesh anpassen. WICHTIG: Korrekte Skalierung!
+      backgroundMesh.scale.x = window.innerWidth / 100;
+      backgroundMesh.scale.y = window.innerHeight / 100;
+    });
+  </script>
+</body>
+</html>
